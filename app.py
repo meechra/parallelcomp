@@ -2,7 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 
 def convert_to_gray(image_bytes):
@@ -18,7 +18,7 @@ def convert_to_gray(image_bytes):
 
 def sequential_conversion(image_bytes, repeats):
     """
-    Run the grayscale conversion sequentially for a given number of iterations.
+    Process the image sequentially for a given number of iterations.
     Returns the first grayscale image and the total execution time.
     """
     start_time = time.perf_counter()
@@ -31,13 +31,15 @@ def sequential_conversion(image_bytes, repeats):
 
 def parallel_conversion(image_bytes, repeats):
     """
-    Run the grayscale conversion in parallel using ProcessPoolExecutor.
+    Process the image in parallel using ThreadPoolExecutor for a given number of iterations.
     Returns the first grayscale image and the total execution time.
     """
     start_time = time.perf_counter()
-    with ProcessPoolExecutor() as executor:
+    results = []
+    with ThreadPoolExecutor() as executor:
         futures = [executor.submit(convert_to_gray, image_bytes) for _ in range(repeats)]
-        results = [future.result() for future in futures]
+        for future in as_completed(futures):
+            results.append(future.result())
     end_time = time.perf_counter()
     return results[0], end_time - start_time
 
@@ -54,7 +56,7 @@ def main():
         st.subheader("Original Image")
         st.image(original_image, channels="BGR", caption="Original Image", use_container_width=True)
         
-        # Slider for selecting the number of iterations (to amplify timing differences)
+        # Slider for selecting the number of iterations
         repeats = st.slider("Select the number of iterations for conversion:", 
                             min_value=5, max_value=50, value=20, step=5)
         
@@ -62,13 +64,13 @@ def main():
         
         # Sequential conversion
         seq_gray, seq_time = sequential_conversion(image_bytes, repeats)
-        # Parallel conversion
+        # Parallel conversion using threads
         par_gray, par_time = parallel_conversion(image_bytes, repeats)
         
         st.write(f"Sequential conversion ({repeats} iterations) took: {seq_time:.4f} seconds")
         st.write(f"Parallel conversion ({repeats} iterations) took: {par_time:.4f} seconds")
         
-        # Display the grayscale images side by side
+        # Display the grayscale images side by side for comparison
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Sequential Conversion Output")
@@ -84,6 +86,6 @@ def main():
         })
         st.subheader("Conversion Time Comparison")
         st.bar_chart(df.set_index("Conversion"))
-        
+
 if __name__ == "__main__":
     main()
