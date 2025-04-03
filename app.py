@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 
@@ -18,7 +19,7 @@ def convert_to_gray(image_bytes):
 
 def sequential_conversion(image_bytes, repeats):
     """
-    Process the image sequentially for a given number of iterations.
+    Run grayscale conversion sequentially for a given number of iterations.
     Returns the first grayscale image and the total execution time.
     """
     start_time = time.perf_counter()
@@ -29,14 +30,14 @@ def sequential_conversion(image_bytes, repeats):
     end_time = time.perf_counter()
     return results[0], end_time - start_time
 
-def parallel_conversion(image_bytes, repeats):
+def parallel_conversion(image_bytes, repeats, max_workers):
     """
-    Process the image in parallel using ThreadPoolExecutor for a given number of iterations.
+    Run grayscale conversion in parallel using ThreadPoolExecutor.
     Returns the first grayscale image and the total execution time.
     """
     start_time = time.perf_counter()
     results = []
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(convert_to_gray, image_bytes) for _ in range(repeats)]
         for future in as_completed(futures):
             results.append(future.result())
@@ -60,15 +61,26 @@ def main():
         repeats = st.slider("Select the number of iterations for conversion:", 
                             min_value=5, max_value=50, value=20, step=5)
         
+        # Slider for selecting the number of threads for parallel conversion
+        max_threads = os.cpu_count() or 4  # Fallback in case os.cpu_count() returns None
+        num_workers = st.slider("Select the number of parallel workers (threads):", 
+                                min_value=1, max_value=max_threads, value=max_threads, step=1)
+        
         st.write("Processing conversions...")
         
         # Sequential conversion
         seq_gray, seq_time = sequential_conversion(image_bytes, repeats)
-        # Parallel conversion using threads
-        par_gray, par_time = parallel_conversion(image_bytes, repeats)
+        # Parallel conversion using the specified number of workers
+        par_gray, par_time = parallel_conversion(image_bytes, repeats, num_workers)
         
         st.write(f"Sequential conversion ({repeats} iterations) took: {seq_time:.4f} seconds")
-        st.write(f"Parallel conversion ({repeats} iterations) took: {par_time:.4f} seconds")
+        st.write(f"Parallel conversion ({repeats} iterations) with {num_workers} worker(s) took: {par_time:.4f} seconds")
+        
+        # Calculate speedup and efficiency
+        speedup = seq_time / par_time if par_time > 0 else float('inf')
+        efficiency = speedup / num_workers if num_workers > 0 else float('inf')
+        st.write(f"**Speedup Achieved:** {speedup:.2f}x")
+        st.write(f"**Efficiency:** {efficiency:.2f} (Speedup per worker)")
         
         # Display the grayscale images side by side for comparison
         col1, col2 = st.columns(2)
